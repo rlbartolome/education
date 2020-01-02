@@ -1,0 +1,308 @@
+---
+title: "Boon or Bane? Is E-Learning affecting the grades of students?"
+author: "Rommel Bartolome"
+output: pdf_document
+abstract: >
+  E-Learning has been very widespread in past century due to the rise of computers. Several benefits of e-learning includes reduced costs, scalability, consistency and ability to accomodate different time zones. However, there are skeptics which say that e-learning can be a "bane" as it removes the focus of the students due to the freedom it gives. In this exercise, we discover knowledge on a dataset where students use an elearning facility wherein while using the platform, their online footprint is being recorded. From these, we engineered four features: (1) focus_level - times where they were browsing non-related sites, (2) time_finished - time it takes to finish the exercise, (3) idle_time - time where they were doing nothing, and (4) activity_level - number of clicks, keystrokes and mouse wheeling they made. We then find correlation of these engineered features with grades, using a linear model. It was found that among all of the features, only the time_finished was the significant variable and the model with only this variable gives the best prediction. This means that the faster a student finishes the exercise, the higher the student's final grade will be. Among all the variables, this is the most unrelated to e-learning. This also means that a student browsing non-related sites, has lots of idle time and those with little activity level does not necessarily mean they will get lower grades. As such, while e-learning may remove the focus of the students as they are free to visit any site during the session, it does not necessarily mean that e-learning will be a "bane", as it does not significantly affect the student's grade. 
+header-includes:
+  \renewcommand{\abstractname}{Summary}
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+require("knitr")
+```
+
+# Data Reading
+
+We read the data first, but before that we will need the following tools to do this:
+
+```{r message=FALSE, warning=FALSE}
+library(plyr)
+library(dplyr)
+library(tidyverse)
+library(gtools)
+library(knitr)
+library(openxlsx)
+library(GGally)
+```
+
+Looking at the documentation, the data set contains the students' time series of activities during six sessions of laboratory sessions of the course of digital electronics. There are 6 folders containing the students' data per session. Each 'Session' folder contains up to CSV files each dedicated to a specific student log during that session. The number of files in each folder changes due to the number of students present in each session. Each file contains 13 features. The features are the following:
+
+|      Feature      |                                    Description                                    |
+|:-----------------:|:---------------------------------------------------------------------------------:|
+|      session      |               It shows the number of laboratory session from 1 to 6.              |
+|     student_Id    |                     It shows the Id of student from 1 to 115.                     |
+|      exercise     |             It shows the Id of the exercise the student is working on.            |
+|      activity     |   The activities are labeled based on the title of web pages that are on focus.   |
+|     start_time    |              It shows the start date and time of a specific activity.             |
+|      end_time     |               It shows the end date and time of a specific activity.              |
+|     idle_time     | It shows the duration of idle time between the start and end time of an activity. |
+|    mouse_wheel    |               It shows the amount of mouse wheel during an activity.              |
+| mouse_wheel_click |           It shows the number of mouse wheel clicks during an activity.           |
+|  mouse_click_left |            It shows the number of mouse left clicks during an activity.           |
+| mouse_click_right |           It shows the number of mouse right clicks during an activity.           |
+|   mouse_movement  |      It shows the distance covered by the mouse movements during an activity.     |
+|     keystroke     |               It shows the number of keystrokes during an activity.               |
+
+To read the data, we will create a for loop that will run through all of the six Session folders, and then extract that and bind with the previous "sessions", then write it in a .csv file to save it:
+
+```{r eval=FALSE}
+colnames <- c("session", "student_Id", "exercise", "activity", "start_time", 
+              "end_time", "idle_time", "mouse_wheel", "mouse_wheel_click", 
+              "mouse_click_left", "mouse_click_right", "mouse_movement", 
+              "keystroke")
+
+data <- NULL
+
+for (i in 1:6){
+  setwd(paste0("C:/Users/rommel.bartolome/Documents/
+               Stat 227/EPM Dataset 2/Data/Processes/Session ",i,"/"))
+  filenames <- list.files()
+  filenames <- mixedsort(filenames)
+  dataframe <- ldply(.data = filenames, .fun = read.csv, col.names = colnames) 
+  data <- rbind(data, dataframe)
+}
+
+setwd("C:/Users/rommel.bartolome/Documents/Stat 227")
+data %>% write.csv("education_data.csv")
+```
+
+We will also read the grades values:
+```{r}
+finalgrades1 <- read.xlsx("final_grades.xlsx", sheet = 1)
+finalgrades2 <- read.xlsx("final_grades.xlsx", sheet = 2)
+int_grades <- read.xlsx("intermediate_grades.xlsx")
+```
+
+We have now successfully read the files provides. The next part would be exploring our data.
+
+# Exploratory Data Analysis
+
+The first thing we would like to see is how is the main data looking:
+
+```{r}
+education <- read.csv("education_data.csv")[,-1]
+education %>% head()
+education %>% nrow()
+```
+
+From here, we can see that there are 13 columns and around 229,798 rows. 
+
+We also check the data from the final and intermediate grades:
+
+```{r}
+finalgrades1 %>% head()
+finalgrades2 %>% head()
+int_grades %>% head()
+```
+
+We now check the summary statistics:
+
+```{r}
+education %>% summary()
+finalgrades1 %>% summary()
+finalgrades2 %>% summary()
+int_grades %>% summary()
+```
+
+The tables above show the summary statistics of the variables. This is helpful in checking what the usual values of the variables.
+
+We explore the histogram values of the some of the variables:
+
+```{r}
+hist(education$idle_time, main = "Histogram of Idle Time", xlab = "Idle Time")
+```
+
+From this we can see that majority of the students have zero idle time. We also check the histogram of other variables:
+
+```{r}
+par(mfrow=c(3,2))
+hist(education$mouse_wheel, main = "Histogram of Mouse Wheel", 
+     xlab = "Mouse Wheel", breaks = 100)
+hist(education$mouse_wheel_click, main = "Histogram of Mouse Wheel Click", 
+     xlab = "Mouse Wheel Click", breaks = 100)
+hist(education$mouse_click_left, main = "Histogram of Mouse Click Left", 
+     xlab = "Mouse Click Left", breaks = 100)
+hist(education$mouse_click_right, main = "Histogram of Mouse Click Right", 
+     xlab = "Mouse Click Right", breaks = 100)
+hist(education$mouse_movement, main = "Histogram of Mouse Movement", 
+     xlab = "Mouse Movement", breaks = 100)
+hist(education$keystroke, main = "Histogram of Keystroke", 
+     xlab = "Keystroke", breaks = 100)
+```
+
+From the values above, we can see that similar to the idle time, most students have very limited number of keystrokes, clicks and movements.
+
+Also, we would want to check the counts of the activity and exercise:
+
+```{r}
+plot(education$exercise, main = 'Count of Exercises')
+```
+
+From here, we can see that there are some exercises with fewer counts. We also check the activities:
+
+```{r}
+plot(education$activity, main = 'Count of Activities')
+```
+
+Again, similar to the first one. There are some activities that have more counts. However, a spike was seen on "Others", which are times When the student is not viewing any pages related to academic work. This includes, for majority of the cases, the student irrelevant activity to the course (e.g. if the student is on Facebook). 
+
+# Knowledge Discovery
+
+After checking the data, what we can now formulate what we may want to discover. From the grades data, we can see that there are students that have very low marks. What we want to ask is if this is due to the fact that they are just doing nothing or is doing other things in the computer. We would also like to know if more activity in the computer means higher grade. As such we would like to engineer these features, with grades as our response variable:
+
+1. focus
+Is the student viewing pages related to the exercise? Here, we would just like to classify everything as related or non-related.
+
+2. idle_time
+How much idle time was spent by the student?
+
+3. time_finished
+How long did the student finish? We will find the difference of the start time and the end time.
+
+4. activity level
+Did the student have more activity (keystrokes, mouse movements)? We will consolidate this into just one feature.
+
+We create these features, but first, we would need to find the students with final grades only:
+
+```{r}
+## change name from "Total (100 points)" to just "Total"
+finalgrades <- rbind(finalgrades1, finalgrades2)
+colnames(finalgrades)[18] <- "Total"
+finalgrades <- finalgrades %>% dplyr::select(Student.ID, Total) %>% aggregate(by = list(finalgrades$Student.ID), FUN = mean)
+finalgrades <- finalgrades[,-1] 
+hist(finalgrades$Total, main = "Histogram of Final Grades", xlab = "Grades")
+```
+
+From here, we can see the almost uniform distribution of the grades from 10-100. We engineer the other variables, using only the student with grades:
+
+```{r}
+#helper function for normalization
+normalize <- function(x) {
+return ((x - min(x)) / (max(x) - min(x))) }
+
+education_filtered_1 <- filter(education, student_Id %in% finalgrades$Student.ID)
+
+education_filtered_2 <- education_filtered_1 %>% 
+  mutate(time_finished = as.numeric(education_filtered_1$end_time %>% 
+           as.POSIXct(format = "%m.%d.%Y %H:%M:%S") - 
+           education_filtered_1$start_time %>% 
+           as.POSIXct(format = "%m.%d.%Y %H:%M:%S"))) %>%
+  mutate(unfocus = ifelse(as.character(education_filtered_1$activity) == " Other", 1, 0)) %>%
+  mutate(activity_level = 
+           normalize(education_filtered_1$mouse_wheel) +
+           normalize(education_filtered_1$mouse_wheel_click) +
+           normalize(education_filtered_1$mouse_click_left) +
+           normalize(education_filtered_1$mouse_click_right) +
+           normalize(education_filtered_1$mouse_movement) +
+           normalize(education_filtered_1$keystroke)) %>%
+  na.omit()
+
+education_filtered_3 <- education_filtered_2 %>% 
+  dplyr::select(student_Id, idle_time, time_finished, unfocus, activity_level) %>%
+  aggregate(by = list(education_filtered_2$student_Id), FUN = mean)
+           
+```
+
+
+From above, we engineered the new variables time_finished, unfocus and activity level. 
+
+We check the value of the our newly created engineered table:
+
+```{r}
+education_filtered_3 <- education_filtered_3[,-1]
+education_filtered_3 %>% head()
+```
+
+We join this with the grades table:
+
+```{r}
+final_education_1 <- merge(education_filtered_3, finalgrades, by.x = "student_Id", by.y = "Student.ID")
+final_education_1 <- final_education_1[,-1]
+names(final_education_1)[5] <- 'final'
+final_education_1 %>% head()
+```
+
+We check the most correlated with 'final':
+
+```{r}
+final_education_1 %>%
+  ggpairs(progress=FALSE)
+```
+
+Above, we compare the correlation of final with all other engineered features. We can see strong correlation with idle_time and time_finished.
+
+We split the data in a test and train split:
+
+```{r}
+smp_size <- floor(0.75 * nrow(final_education_1))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(final_education_1)), size = smp_size)
+
+education_train <- final_education_1[train_ind, ]
+education_test <- final_education_1[-train_ind, ]
+```
+
+We fit a linear model:
+
+```{r}
+full_model <- lm(final ~ ., data=education_train)
+full_model %>% summary
+```
+```{r}
+model_coefs <- summary(full_model)$coeff[-1, 4]
+significant_predictors <- model_coefs[model_coefs < 0.10]
+significant_predictors
+```
+
+For now, it appears that only the time finished appears to be the predictor of the final grade.
+
+We try backward elimination:
+
+```{r}
+# Run backward elimination
+initial_model <- lm(final ~ 1, data = education_train)
+back_elim <- step(object = full_model, scope = list(lower = initial_model), direction = "backward")
+```
+
+We try forward elimination:
+
+```{r}
+# Run forward elimination
+forward_elim <- step(object = initial_model, scope = list(upper = full_model), direction = "forward")
+```
+
+We try a stepwise elimination:
+
+```{r}
+step_sel <- step(object = initial_model, scope = list(upper = full_model), direction = "both")
+```
+
+Now, we evaluated the metrics:
+
+```{r}
+fitstat <- function(x) {
+  xsum <- summary(x)
+  resid <- x$residuals
+  fit <- x$fitted.values
+  return(c(R2 = xsum$r.squared,
+           R2Adj = xsum$adj.r.squared,
+           AIC = AIC(x),
+           BIC = BIC(x),
+           MSE = mean(resid^2),
+           MAPE = mean(abs(resid/fit))
+  ))}
+
+sapply(list('Full Model' = full_model,
+            'Forward Elimination' = forward_elim,
+            'Backward Elimination' = back_elim,
+            'Stepwise Selection' = step_sel), fitstat)
+```
+
+All models are the same:
+
+```{r}
+back_elim
+```
+
+It means that only the time finished affects the final grade. If a student passes their worksheet earlier, the higher their grade is.
